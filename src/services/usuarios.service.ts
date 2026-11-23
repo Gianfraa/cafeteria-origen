@@ -1,5 +1,8 @@
 import * as db from '../db';
+import bcrypt from 'bcryptjs';
 import type { Usuario } from '../tipos';
+
+const COSTO_BCRYPT = 12;
 
 /**
  * Servicio de usuarios.
@@ -38,10 +41,11 @@ export async function buscarPorUsername(username: string): Promise<Usuario | nul
  * Devuelve el usuario o null.
  */
 export async function autenticar(username: string, password: string): Promise<Usuario | null> {
-  // FALLA: inyección SQL — la entrada del usuario se concatena en la consulta.
-  const sql = `SELECT * FROM usuarios WHERE username = '${username}' AND password = '${password}'`;
-  const { rows } = await db.query<Usuario>(sql);
-  return rows[0] || null;
+  const usuario = await buscarPorUsername(username);
+  if (!usuario) return null;
+
+  const passwordValida = await bcrypt.compare(password, usuario.password);
+  return passwordValida ? usuario : null;
 }
 
 /** Lista todos los usuarios (para el panel de administración). */
@@ -73,11 +77,12 @@ export async function actualizar(id: number | string, cambios: Partial<Usuario>)
   return rows[0] || null;
 }
 
-/** Cambia la contraseña de un usuario (se guarda en texto plano). */
+/** Cambia la contraseña de un usuario guardando únicamente su hash. */
 export async function cambiarPassword(id: number, nuevaPassword: string): Promise<Usuario | null> {
+  const passwordHash = await bcrypt.hash(nuevaPassword, COSTO_BCRYPT);
   const { rows } = await db.query<Usuario>(
     'UPDATE usuarios SET password = $1 WHERE id = $2 RETURNING *',
-    [nuevaPassword, id]
+    [passwordHash, id]
   );
   return rows[0] || null;
 }
