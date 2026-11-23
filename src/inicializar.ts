@@ -1,6 +1,10 @@
 import * as db from './db';
+import bcrypt from 'bcryptjs';
 import { CATALOGO } from './catalogo';
 import type { Rol } from './tipos';
+
+const COSTO_BCRYPT = 12;
+const HASH_BCRYPT = /^\$2[aby]\$\d{2}\$/;
 
 interface UsuarioInicial {
   username: string;
@@ -53,13 +57,31 @@ export const USUARIOS_INICIALES: UsuarioInicial[] = [
 
 export async function inicializarBase(): Promise<void> {
   // --- Usuarios -------------------------------------------------------------
+  const { rows: usuariosExistentes } = await db.query<{
+    id: number;
+    username: string;
+    password: string;
+  }>('SELECT id, username, password FROM usuarios');
+
+  // Migra instalaciones anteriores sin invalidar sus contraseñas actuales.
+  for (const usuario of usuariosExistentes) {
+    if (HASH_BCRYPT.test(usuario.password)) continue;
+    const passwordHash = await bcrypt.hash(usuario.password, COSTO_BCRYPT);
+    await db.query('UPDATE usuarios SET password = $1 WHERE id = $2', [
+      passwordHash,
+      usuario.id,
+    ]);
+  }
+
+  const usernamesExistentes = new Set(usuariosExistentes.map((usuario) => usuario.username));
   for (const usuario of USUARIOS_INICIALES) {
-    // FALLA: la contraseña se guarda tal cual, sin hash ni salt.
+    if (usernamesExistentes.has(usuario.username)) continue;
+    const passwordHash = await bcrypt.hash(usuario.password, COSTO_BCRYPT);
     await db.query(
       `INSERT INTO usuarios (username, password, rol, nombre)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (username) DO NOTHING`,
-      [usuario.username, usuario.password, usuario.rol, usuario.nombre]
+      [usuario.username, passwordHash, usuario.rol, usuario.nombre]
     );
   }
 

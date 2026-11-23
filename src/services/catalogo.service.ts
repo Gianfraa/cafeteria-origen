@@ -35,24 +35,30 @@ type Id = number | string;
 export async function listar(filtros: FiltrosCatalogo = {}): Promise<ProductoConPrecio[]> {
   const { tipo, variedad, q } = filtros;
 
-  // FALLA: concatenación directa de entrada de usuario en la consulta.
-  let sql = 'SELECT * FROM productos WHERE activo = true';
-  if (tipo) sql += ` AND tipo = '${tipo}'`;
-  if (variedad) sql += ` AND variedad = '${variedad}'`;
-  if (q) {
-    sql += ` AND (nombre ILIKE '%${q}%' OR descripcion ILIKE '%${q}%')`;
-  }
-  sql += ' ORDER BY tipo, variedad NULLS FIRST, id';
-
-  const { rows } = await db.query<Producto>(sql);
+  const { rows } = await db.query<Producto>(
+    `SELECT *
+       FROM productos
+      WHERE activo = true
+        AND ($1::text IS NULL OR tipo = $1)
+        AND ($2::text IS NULL OR variedad = $2)
+        AND (
+          $3::text IS NULL
+          OR nombre ILIKE '%' || $3 || '%'
+          OR descripcion ILIKE '%' || $3 || '%'
+        )
+      ORDER BY tipo, variedad NULLS FIRST, id`,
+    [tipo || null, variedad || null, q || null]
+  );
 
   return rows.map((p) => ({ ...p, precio: calcularPrecio(p) }));
 }
 
 /** Obtiene un producto por id. */
 export async function obtener(id: Id): Promise<ProductoConPrecio | null> {
-  // FALLA: inyección SQL en el id.
-  const { rows } = await db.query<Producto>(`SELECT * FROM productos WHERE id = '${id}'`);
+  const { rows } = await db.query<Producto>(
+    'SELECT * FROM productos WHERE id = $1',
+    [id]
+  );
   if (!rows[0]) return null;
   return { ...rows[0], precio: calcularPrecio(rows[0]) };
 }
