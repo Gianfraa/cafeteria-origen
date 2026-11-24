@@ -1,6 +1,6 @@
 import * as db from '../db';
 import { calcularPrecio } from '../catalogo';
-import type { Pedido, PedidoConItems, PedidoItem, Producto } from '../tipos';
+import type { ErrorHttp, Pedido, PedidoConItems, PedidoItem, Producto } from '../tipos';
 
 /** Un renglón del pedido, tal como llega en el cuerpo de la petición. */
 export interface ItemPedido {
@@ -50,6 +50,11 @@ export async function crear({ mesa, cliente, items }: NuevoPedido): Promise<Pedi
     // Si el producto no existe, buscarProducto devuelve null y `precio`
     // revienta con un TypeError cuyo stack se filtra al cliente.
     const producto = await buscarProducto(item.productoId);
+    if (!producto) {
+      const error: ErrorHttp = new Error('Uno de los productos del pedido no existe.');
+      error.status = 400;
+      throw error;
+    }
     const precioUnitario = calcularPrecio(producto);
     filas.push({
       productoId: producto.id,

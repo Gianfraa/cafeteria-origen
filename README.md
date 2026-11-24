@@ -92,13 +92,12 @@ El objetivo es que termine en `✔` sin que se rompan los tests.
 
 | Usuario | Contraseña | Rol | Qué sirve para |
 |---|---|---|---|
-| `admin` | `admin` | admin | Credencial **por defecto** (falla de configuración) |
-| `valentina` | `origen2024` | admin | La dueña del negocio |
-| `barista` | `cafe123` | barista | Usuario legítimo no administrador |
-| `mozo` | `mozo123` | mozo | Personal de sala |
-| `cliente` | `cliente` | cliente | Para probar la **escalada de privilegios** |
+| `valentina` | `Valentina#Origen2026` | admin | La dueña del negocio |
+| `barista` | `Barista#Origen2026` | barista | Usuario legítimo no administrador |
+| `mozo` | `Mozo#Origen2026` | mozo | Personal de sala |
+| `cliente` | `Cliente#Origen2026` | cliente | Usuario sin permisos de administración |
 
-Las contraseñas están en **texto plano** en la base (falla intencional).
+Las contraseñas se guardan hasheadas con bcrypt. No hay cuenta `admin` de fábrica.
 
 ---
 

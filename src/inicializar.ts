@@ -16,40 +16,33 @@ interface UsuarioInicial {
 /**
  * Carga los datos iniciales (usuarios y catálogo) si la base está vacía.
  *
- * FALLA — Almacenamiento inseguro de credenciales:
- * las contraseñas de los usuarios se guardan en TEXTO PLANO.
- * La corrección es hashear con bcrypt + salt por usuario
- * (bcryptjs ya está instalado como dependencia del proyecto).
+ * Las contraseñas de los usuarios se guardan hasheadas con bcrypt (salt por
+ * usuario). Los usuarios de prueba no incluyen una cuenta "admin" de fábrica
+ * ni contraseñas triviales.
  */
 
 export const USUARIOS_INICIALES: UsuarioInicial[] = [
   {
-    username: 'admin',
-    password: 'admin',
-    rol: 'admin',
-    nombre: 'Administración',
-  },
-  {
     username: 'valentina',
-    password: 'origen2024',
+    password: 'Valentina#Origen2026',
     rol: 'admin',
     nombre: 'Valentina',
   },
   {
     username: 'barista',
-    password: 'cafe123',
+    password: 'Barista#Origen2026',
     rol: 'barista',
     nombre: 'Barista',
   },
   {
     username: 'mozo',
-    password: 'mozo123',
+    password: 'Mozo#Origen2026',
     rol: 'mozo',
     nombre: 'Mozo de sala',
   },
   {
     username: 'cliente',
-    password: 'cliente',
+    password: 'Cliente#Origen2026',
     rol: 'cliente',
     nombre: 'Cliente',
   },
