@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 
 import config from '../config';
 import * as catalogo from '../services/catalogo.service';
@@ -11,6 +11,8 @@ import type { Rol, Usuario } from '../tipos';
 
 const router = express.Router();
 const ROLES_VALIDOS: Rol[] = ['admin', 'barista', 'mozo', 'cliente'];
+// Lista blanca de servidores que se pueden probar desde el panel.
+const HOSTS_PERMITIDOS = ['proveedor.origen.com', 'localhost', '127.0.0.1'];
 
 /**
  * Rutas del panel de administración.
@@ -140,14 +142,30 @@ router.post('/cambiar-contrasena', async (req, res, next) => {
 router.post('/probar-conexion', (req, res) => {
   const { host } = req.body || {};
 
-  // FALLA: entrada de usuario concatenada en un comando de shell.
-  const comando = `ping -c 3 ${host}`;
+  if (typeof host !== 'string' || !HOSTS_PERMITIDOS.includes(host)) {
+    return res.status(400).json({ error: 'Servidor no permitido.' });
+  }
 
-  exec(comando, (error, stdout, stderr) => {
+  // Sin shell: el host viaja como argumento separado y no se interpreta.
+  const args = ['-c', '3', host];
+  const proceso = spawn('ping', args, { shell: false });
+
+  let salida = '';
+  let errores = '';
+  proceso.stdout.on('data', (dato) => { salida += dato.toString(); });
+  proceso.stderr.on('data', (dato) => { errores += dato.toString(); });
+
+  proceso.on('error', () => {
+    if (res.headersSent) return;
+    res.status(500).json({ error: 'No se pudo ejecutar la prueba de conexión.' });
+  });
+
+  proceso.on('close', () => {
+    if (res.headersSent) return;
     res.json({
-      comando,
-      salida: stdout,
-      error: stderr || (error ? error.message : null),
+      comando: `ping ${args.join(' ')}`,
+      salida,
+      error: errores || null,
     });
   });
 });
