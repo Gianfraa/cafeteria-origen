@@ -71,12 +71,13 @@ services:
       - ./docker-compose.yml:/app/docker-compose.yml:ro
       - ./Dockerfile:/app/Dockerfile:ro
       - ./tsconfig.json:/app/tsconfig.json:ro
-      - ./uploads:/app/uploads
+      - uploads_origen:/app/uploads
     networks:
       - red_origen
 
 volumes:
   datos_origen:
+  uploads_origen:
 
 networks:
   red_origen:
