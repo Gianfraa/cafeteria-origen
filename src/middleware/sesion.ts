@@ -56,6 +56,8 @@ export function crearSesion(req: Request, res: Response, usuario: UsuarioSesion)
     usuario,
     creadaEn: ahora,
     expiraEn: ahora + TTL_INACTIVIDAD_MS,
+    // Token anti-CSRF propio de esta sesión (ver middleware/csrf.ts).
+    csrfToken: crypto.randomBytes(32).toString('hex'),
   });
 
   res.cookie('sid', id, { ...opcionesCookie, maxAge: TTL_ABSOLUTO_MS });

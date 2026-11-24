@@ -78,10 +78,50 @@
     }));
   }
 
-  function api(url, opciones) {
+  /* ------------------------------------------------------------- anti-CSRF */
+  var tokenCsrf = null;
+
+  /** Pide el token anti-CSRF al servidor (y lo guarda para reusarlo). */
+  function obtenerTokenCsrf(renovar) {
+    if (tokenCsrf && !renovar) return Promise.resolve(tokenCsrf);
+    return fetch(API + '/csrf-token')
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        tokenCsrf = data.token || null;
+        return tokenCsrf;
+      });
+  }
+
+  function pedir(url, opciones) {
     return fetch(API + url, opciones).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         return { ok: res.ok, status: res.status, data: data };
+      });
+    });
+  }
+
+  /** Copia las opciones del fetch agregando la cabecera X-CSRF-Token. */
+  function conToken(opciones, token) {
+    var cabeceras = Object.assign({}, opciones.headers || {}, { 'X-CSRF-Token': token || '' });
+    return Object.assign({}, opciones, { headers: cabeceras });
+  }
+
+  /**
+   * Hace una petición a la API. Las que cambian estado (POST, PUT, PATCH,
+   * DELETE) llevan el token anti-CSRF; si el servidor responde 403 (token
+   * vencido o de otra sesión) se pide uno nuevo y se reintenta una vez.
+   */
+  function api(url, opciones) {
+    var op = opciones || {};
+    var metodo = (op.method || 'GET').toUpperCase();
+    if (metodo === 'GET' || metodo === 'HEAD') return pedir(url, op);
+
+    return obtenerTokenCsrf(false).then(function (token) {
+      return pedir(url, conToken(op, token));
+    }).then(function (resp) {
+      if (resp.status !== 403) return resp;
+      return obtenerTokenCsrf(true).then(function (token) {
+        return pedir(url, conToken(op, token));
       });
     });
   }
@@ -129,6 +169,8 @@
         feedback(caja, 'No pudimos iniciar sesión: ' + (resp.data.error || 'error desconocido'), false);
         return;
       }
+      // Sesión nueva → token anti-CSRF nuevo: se descarta el anterior.
+      tokenCsrf = null;
       usuario = resp.data.usuario;
       mostrarPanel();
     });
@@ -136,6 +178,7 @@
 
   function cerrarSesion() {
     postJSON('/auth/logout', {}).then(function () {
+      tokenCsrf = null;
       usuario = null;
       $('#vista-login').hidden = false;
       $('#vista-panel').hidden = true;
