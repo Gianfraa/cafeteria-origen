@@ -41,6 +41,10 @@ router.put('/usuarios/:id', async (req, res, next) => {
     if (username !== undefined) cambios.username = username;
     if (nombre !== undefined) cambios.nombre = nombre;
     if (rol !== undefined) {
+      // Defensa extra: solo un admin puede cambiar roles, aunque se quite el middleware.
+      if (!req.usuario || req.usuario.rol !== 'admin') {
+        return res.status(403).json({ error: 'No tenés permisos para cambiar roles.' });
+      }
       if (!ROLES_VALIDOS.includes(rol)) {
         return res.status(400).json({ error: 'Rol inválido.' });
       }
