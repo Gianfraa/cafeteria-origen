@@ -1,13 +1,14 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
 import crypto from 'crypto';
+import { spawn } from 'child_process';
 
 import config from '../config';
 import * as catalogo from '../services/catalogo.service';
 import * as usuarios from '../services/usuarios.service';
 import { requiereSesion, requiereRol } from '../middleware/auth';
+import { validarId } from '../validacion';
 import type { Rol, Usuario } from '../tipos';
 
 const router = express.Router();
@@ -54,6 +55,10 @@ router.get('/usuarios', async (req, res, next) => {
  */
 router.put('/usuarios/:id', async (req, res, next) => {
   try {
+    const id = validarId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Id inválido.' });
+    }
     const { username, nombre, rol, password } = req.body || {};
     const cambios: Partial<Usuario> = {};
     if (username !== undefined) cambios.username = username;
@@ -70,7 +75,7 @@ router.put('/usuarios/:id', async (req, res, next) => {
     }
     if (password !== undefined) cambios.password = password;
 
-    const usuario = await usuarios.actualizar(req.params.id, cambios);
+    const usuario = await usuarios.actualizar(id, cambios);
     if (!usuario) {
       return res.status(404).json({ error: 'Usuario no encontrado.' });
     }
@@ -97,7 +102,11 @@ router.post('/productos', async (req, res, next) => {
 /** PUT /api/admin/productos/:id */
 router.put('/productos/:id', async (req, res, next) => {
   try {
-    const producto = await catalogo.actualizar(req.params.id, req.body || {});
+    const id = validarId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Id inválido.' });
+    }
+    const producto = await catalogo.actualizar(id, req.body || {});
     if (!producto) {
       return res.status(404).json({ error: 'Producto no encontrado.' });
     }
@@ -115,7 +124,11 @@ router.put('/productos/:id', async (req, res, next) => {
  */
 router.delete('/productos/:id', async (req, res, next) => {
   try {
-    const producto = await catalogo.eliminar(req.params.id);
+    const id = validarId(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Id inválido.' });
+    }
+    const producto = await catalogo.eliminar(id);
     if (!producto) {
       return res.status(404).json({ error: 'Producto no encontrado.' });
     }
@@ -149,17 +162,9 @@ router.post('/cambiar-contrasena', async (req, res, next) => {
 /**
  * POST /api/admin/probar-conexion
  *
- * -----------------------------------------------------------------------------
- * FALLA — Inyección de comandos del sistema operativo (OWASP A03:2021)
- * -----------------------------------------------------------------------------
- * La dirección del proveedor se mete dentro de una cadena de shell.
- * Como `exec` launches /bin/sh -c, los operadores del shell (|, ;, &&, $())
- * se interpretan y permiten ejecutar comandos arbitrarios en el contenedor.
- *
- * Corrección: validar el host contra una LISTA BLANCA y ejecutar el proceso
- * con `spawn('ping', ['-c', '3', host], { shell: false })`, sin pasar por el
- * shell.
- * -----------------------------------------------------------------------------
+ * Hace ping a un servidor del proveedor. El host se valida contra una lista
+ * blanca y ping se ejecuta con spawn, sin shell y con argumentos separados:
+ * operadores como ; | && no se interpretan.
  */
 router.post('/probar-conexion', (req, res) => {
   const { host } = req.body || {};
