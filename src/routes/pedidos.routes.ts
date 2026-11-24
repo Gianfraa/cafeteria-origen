@@ -6,6 +6,8 @@ const router = express.Router();
 const MAX_ITEMS = 20;
 const MAX_CANTIDAD = 50;
 const ESTADOS_PERMITIDOS = ['abierto', 'preparando', 'listo', 'entregado'];
+const ERROR_ITEMS = `El pedido debe tener entre 1 y ${MAX_ITEMS} productos.`;
+const ERROR_CANTIDAD = `Cada producto necesita un id válido y una cantidad entera entre 1 y ${MAX_CANTIDAD}.`;
 
 /**
  * POST /api/pedidos
@@ -27,7 +29,7 @@ router.post('/', async (req, res, next) => {
     }
 
     if (!Array.isArray(items) || items.length < 1 || items.length > MAX_ITEMS) {
-      return res.status(400).json({ error: `El pedido debe tener entre 1 y ${MAX_ITEMS} productos.` });
+      return res.status(400).json({ error: ERROR_ITEMS });
     }
 
     const itemsValidos: pedidos.ItemPedido[] = [];
@@ -35,9 +37,7 @@ router.post('/', async (req, res, next) => {
       const productoId = validarId(item?.productoId);
       const cantidad = validarEnteroEnRango(item?.cantidad, 1, MAX_CANTIDAD);
       if (!productoId || !cantidad) {
-        return res.status(400).json({
-          error: `Cada producto necesita un id válido y una cantidad entera entre 1 y ${MAX_CANTIDAD}.`,
-        });
+        return res.status(400).json({ error: ERROR_CANTIDAD });
       }
       itemsValidos.push({ productoId, cantidad });
     }

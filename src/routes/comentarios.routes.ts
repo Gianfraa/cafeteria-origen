@@ -3,6 +3,9 @@ import * as comentarios from '../services/comentarios.service';
 import { validarEnteroEnRango, validarId, validarTexto } from '../validacion';
 
 const router = express.Router();
+// Límites de las reseñas (los mismos que el formulario del sitio).
+const LONGITUD_AUTOR = { min: 2, max: 40 };
+const LONGITUD_TEXTO = { min: 3, max: 280 };
 
 /**
  * GET /api/comentarios — reseñas públicas de la cafetería.
@@ -27,8 +30,8 @@ router.post('/', async (req, res, next) => {
     const { autor, texto, calificacion } = req.body || {};
 
     // Longitud y rango validados en el servidor (mismos límites que el formulario).
-    const autorValido = validarTexto(autor, 2, 40);
-    const textoValido = validarTexto(texto, 3, 280);
+    const autorValido = validarTexto(autor, LONGITUD_AUTOR.min, LONGITUD_AUTOR.max);
+    const textoValido = validarTexto(texto, LONGITUD_TEXTO.min, LONGITUD_TEXTO.max);
     const calificacionValida = validarEnteroEnRango(calificacion, 1, 5);
     if (!autorValido || !textoValido || !calificacionValida) {
       return res.status(400).json({
