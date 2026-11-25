@@ -9,7 +9,7 @@ const LONGITUD_TEXTO = { min: 3, max: 280 };
 
 /**
  * GET /api/comentarios — reseñas públicas de la cafetería.
- * El sitio las pinta con innerHTML: por eso son un vector de XSS almacenado.
+ * El sitio las pinta como texto (textContent), así que no ejecutan HTML.
  */
 router.get('/', async (req, res, next) => {
   try {
@@ -22,8 +22,8 @@ router.get('/', async (req, res, next) => {
 /**
  * POST /api/comentarios
  *
- * FALLAS: sin token anti-CSRF, sin validación de longitud/rango y sin
- * sanitización (XSS almacenado).
+ * Se validan longitud y rango en el servidor; el token anti-CSRF lo verifica
+ * middleware/csrf.ts y el sitio pinta las reseñas como texto (sin XSS).
  */
 router.post('/', async (req, res, next) => {
   try {

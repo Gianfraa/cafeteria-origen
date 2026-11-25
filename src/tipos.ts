@@ -60,6 +60,8 @@ export interface Sesion {
   usuario: UsuarioSesion;
   creadaEn: number;
   expiraEn: number | null;
+  /** Token anti-CSRF de la sesión. */
+  csrfToken: string;
 }
 
 /** Fila de la tabla `pedidos`. */

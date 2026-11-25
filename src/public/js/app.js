@@ -22,17 +22,80 @@
     return n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
   }
 
-  function raw(valor) {
-    // FALLA: esta función NO escapa nada, devuelve el valor tal cual.
-    // La forma correcta de renderizar texto del servidor es escaparHtml()
-    // (o textContent en vez de innerHTML).
-    return String(valor == null ? '' : valor);
+  /**
+   * Crea un elemento del DOM. Todo el texto entra con textContent y los
+   * atributos con setAttribute: lo que venga del servidor o del usuario se
+   * muestra siempre como texto, nunca se interpreta como HTML (evita el XSS).
+   *
+   *   crear('span', { className: 'tag', text: p.tipo })
+   *   crear('div', { attrs: { 'data-id': 3 } }, [hijo1, 'texto', hijo2])
+   */
+  function crear(tag, opciones, hijos) {
+    var nodo = document.createElement(tag);
+    var op = opciones || {};
+    if (op.className) nodo.className = op.className;
+    if (op.text != null) nodo.textContent = String(op.text);
+    if (op.attrs) {
+      Object.keys(op.attrs).forEach(function (nombre) {
+        nodo.setAttribute(nombre, String(op.attrs[nombre]));
+      });
+    }
+    (hijos || []).forEach(function (hijo) {
+      if (hijo == null) return;
+      nodo.appendChild(typeof hijo === 'string' ? document.createTextNode(hijo) : hijo);
+    });
+    return nodo;
   }
 
-  function api(url, opciones) {
+  /** Párrafo de "lista vacía" que se usa en varias secciones. */
+  function vacio(texto) {
+    return crear('p', { className: 'empty', text: texto });
+  }
+
+  /* ------------------------------------------------------------- anti-CSRF */
+  var tokenCsrf = null;
+
+  /** Pide el token anti-CSRF al servidor (y lo guarda para reusarlo). */
+  function obtenerTokenCsrf(renovar) {
+    if (tokenCsrf && !renovar) return Promise.resolve(tokenCsrf);
+    return fetch(API + '/csrf-token')
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        tokenCsrf = data.token || null;
+        return tokenCsrf;
+      });
+  }
+
+  function pedir(url, opciones) {
     return fetch(API + url, opciones).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         return { ok: res.ok, status: res.status, data: data };
+      });
+    });
+  }
+
+  /** Copia las opciones del fetch agregando la cabecera X-CSRF-Token. */
+  function conToken(opciones, token) {
+    var cabeceras = Object.assign({}, opciones.headers || {}, { 'X-CSRF-Token': token || '' });
+    return Object.assign({}, opciones, { headers: cabeceras });
+  }
+
+  /**
+   * Hace una petición a la API. Las que cambian estado (POST, PUT, PATCH,
+   * DELETE) llevan el token anti-CSRF; si el servidor lo rechaza (por ejemplo,
+   * porque cambió la sesión) se pide uno nuevo y se reintenta una vez.
+   */
+  function api(url, opciones) {
+    var op = opciones || {};
+    var metodo = (op.method || 'GET').toUpperCase();
+    if (metodo === 'GET' || metodo === 'HEAD') return pedir(url, op);
+
+    return obtenerTokenCsrf(false).then(function (token) {
+      return pedir(url, conToken(op, token));
+    }).then(function (resp) {
+      if (resp.status !== 403) return resp;
+      return obtenerTokenCsrf(true).then(function (token) {
+        return pedir(url, conToken(op, token));
       });
     });
   }
@@ -57,12 +120,6 @@
     } catch (e) {
       return [];
     }
-  }
-
-  function escaparHtml(texto) {
-    var div = document.createElement('div');
-    div.textContent = texto == null ? '' : String(texto);
-    return div.innerHTML;
   }
 
   /* ------------------------------------------------------------- catálogo */
@@ -90,51 +147,53 @@
     var grid = $('#productos-grid');
 
     if (!productos || productos.length === 0) {
-      grid.innerHTML = '<p class="empty">No encontramos productos con esos filtros.</p>';
+      grid.replaceChildren(vacio('No encontramos productos con esos filtros.'));
       return;
     }
 
-    // ---------------------------------------------------------------
-    // FALLA (XSS reflejado / almacenado): el HTML se construye con
-    // innerHTML a partir de datos que vienen del servidor (nombres de
-    // producto y texto de la búsqueda). Un "<script>" en el buscador o
-    // en el nombre de un producto se ejecuta en el navegador.
-    //
-    // Corrección: usar textContent, o escapar los valores antes de
-    // interpolarlos (ver la función escaparHtml de arriba).
-    // ---------------------------------------------------------------
-    grid.innerHTML = productos.map(function (p) {
+    // Nombres y descripciones vienen de la base (el admin los puede cargar):
+    // se insertan como texto, nunca como HTML.
+    grid.replaceChildren.apply(grid, productos.map(function (p) {
       window.__productos[p.id] = p;
-      var tags = '<span class="tag">' + raw(p.tipo) + '</span>';
-      if (p.variedad) tags += '<span class="tag tag-origen">' + raw(p.variedad) + '</span>';
-      if (p.tamano) tags += '<span class="tag">' + raw(p.tamano) + '</span>';
+      var tags = [crear('span', { className: 'tag', text: p.tipo })];
+      if (p.variedad) tags.push(crear('span', { className: 'tag tag-origen', text: p.variedad }));
+      if (p.tamano) tags.push(crear('span', { className: 'tag', text: p.tamano }));
 
-      return '' +
-        '<article class="product-card">' +
-        '  <div class="product-top">' +
-        '    <h3 class="product-name">' + raw(p.nombre) + '</h3>' +
-        '    <span class="product-price">' + money(p.precio) + '</span>' +
-        '  </div>' +
-        '  <div class="product-tags">' + tags + '</div>' +
-        '  <p class="product-desc">' + raw(p.descripcion) + '</p>' +
-        '  <button class="btn btn-ghost btn-agregar" data-id="' + raw(p.id) + '">Agregar</button>' +
-        '</article>';
-    }).join('');
+      return crear('article', { className: 'product-card' }, [
+        crear('div', { className: 'product-top' }, [
+          crear('h3', { className: 'product-name', text: p.nombre }),
+          crear('span', { className: 'product-price', text: money(p.precio) }),
+        ]),
+        crear('div', { className: 'product-tags' }, tags),
+        crear('p', { className: 'product-desc', text: p.descripcion }),
+        crear('button', {
+          className: 'btn btn-ghost btn-agregar',
+          text: 'Agregar',
+          attrs: { 'data-id': p.id },
+        }),
+      ]);
+    }));
   }
 
   function renderResultado(filtros, total) {
     var el = $('#resultado-busqueda');
 
-    // FALLA (XSS reflejado): se interpola el texto buscado con innerHTML.
+    // El texto buscado vuelve del servidor: se muestra como texto (XSS reflejado).
     if (filtros && filtros.q) {
-      el.innerHTML = 'Resultados para <strong>' + filtros.q + '</strong> — ' + total + ' producto(s)';
+      el.replaceChildren(
+        'Resultados para ',
+        crear('strong', { text: filtros.q }),
+        ' — ' + total + ' producto(s)'
+      );
     } else {
       el.textContent = total + ' producto(s) en el menú';
     }
   }
 
   function renderErrorProductos(mensaje) {
-    $('#productos-grid').innerHTML = '<p class="empty">No se pudo cargar el menú: ' + (mensaje || 'error desconocido') + '</p>';
+    $('#productos-grid').replaceChildren(
+      vacio('No se pudo cargar el menú: ' + (mensaje || 'error desconocido'))
+    );
   }
 
   /* --------------------------------------------------------------- carrito */
@@ -178,37 +237,43 @@
     var total = 0;
 
     if (estado.carrito.length === 0) {
-      cont.innerHTML = '<p class="empty">El carrito está vacío.</p>';
-      lista.innerHTML = '';
+      cont.replaceChildren(vacio('El carrito está vacío.'));
+      lista.replaceChildren();
       $('#resumen-total').textContent = money(0);
       return;
     }
 
-    cont.innerHTML = estado.carrito.map(function (item, i) {
+    // El carrito sale de localStorage (lo puede editar cualquiera): todo como texto.
+    cont.replaceChildren.apply(cont, estado.carrito.map(function (item, i) {
       var subtotal = item.precio * item.cantidad;
       total += subtotal;
-      return '' +
-        '<div class="cart-item">' +
-        '  <div>' +
-        '    <div class="cart-item-name">' + raw(item.nombre) + '</div>' +
-        '    <div class="cart-item-meta">' + money(item.precio) + ' c/u</div>' +
-        '  </div>' +
-        '  <div class="qty-control">' +
-        '    <button type="button" data-acc="menos" data-i="' + i + '">&minus;</button>' +
-        '    <span>' + item.cantidad + '</span>' +
-        '    <button type="button" data-acc="mas" data-i="' + i + '">+</button>' +
-        '  </div>' +
-        '  <div>' +
-        '    <div class="cart-item-price">' + money(subtotal) + '</div>' +
-        '    <button type="button" class="link-danger" data-acc="quitar" data-i="' + i + '">Quitar</button>' +
-        '  </div>' +
-        '</div>';
-    }).join('');
+      return crear('div', { className: 'cart-item' }, [
+        crear('div', null, [
+          crear('div', { className: 'cart-item-name', text: item.nombre }),
+          crear('div', { className: 'cart-item-meta', text: money(item.precio) + ' c/u' }),
+        ]),
+        crear('div', { className: 'qty-control' }, [
+          crear('button', { text: '−', attrs: { type: 'button', 'data-acc': 'menos', 'data-i': i } }),
+          crear('span', { text: item.cantidad }),
+          crear('button', { text: '+', attrs: { type: 'button', 'data-acc': 'mas', 'data-i': i } }),
+        ]),
+        crear('div', null, [
+          crear('div', { className: 'cart-item-price', text: money(subtotal) }),
+          crear('button', {
+            className: 'link-danger',
+            text: 'Quitar',
+            attrs: { type: 'button', 'data-acc': 'quitar', 'data-i': i },
+          }),
+        ]),
+      ]);
+    }));
 
-    lista.innerHTML = estado.carrito.map(function (item) {
-      return '<li><span>' + raw(item.nombre) + ' × ' + item.cantidad + '</span><span>' +
-        money(item.precio * item.cantidad) + '</span></li>';
-    }).join('');
+    lista.replaceChildren.apply(lista, estado.carrito.map(function (item) {
+      return crear('li', null, [
+        crear('span', { text: item.nombre + ' × ' + item.cantidad }),
+        crear('span', { text: money(item.precio * item.cantidad) }),
+      ]);
+    }));
 
     $('#resumen-total').textContent = money(total);
   }
@@ -228,9 +293,8 @@
       }),
     }).then(function (resp) {
       if (!resp.ok) {
-        // FALLA (XSS reflejado): el mensaje del servidor se pinta con innerHTML.
         feedback.className = 'form-feedback is-error';
-        feedback.innerHTML = 'No pudimos enviar el pedido: ' + (resp.data.error || 'error desconocido');
+        feedback.textContent = 'No pudimos enviar el pedido: ' + (resp.data.error || 'error desconocido');
         return;
       }
       feedback.className = 'form-feedback is-ok';
@@ -251,24 +315,23 @@
     return api('/comentarios').then(function (resp) {
       var cont = $('#lista-resenas');
       if (!resp.ok || !resp.data.comentarios || resp.data.comentarios.length === 0) {
-        cont.innerHTML = '<p class="empty">Todavía no hay reseñas. ¡Sé el primero!</p>';
+        cont.replaceChildren(vacio('Todavía no hay reseñas. ¡Sé el primero!'));
         return;
       }
-      // FALLA (XSS almacenado): el texto de la reseña viene de la base y se
-      // inyecta con innerHTML → se ejecuta en el navegador de cada visitante.
-      cont.innerHTML = resp.data.comentarios.map(function (c) {
+      // Autor y texto vienen de la base y los escribió cualquier visitante:
+      // se insertan como texto para que no se ejecuten (XSS almacenado).
+      cont.replaceChildren.apply(cont, resp.data.comentarios.map(function (c) {
         var estrellas = '';
         var i;
         for (i = 0; i < Number(c.calificacion || 0); i++) estrellas += '★';
-        return '' +
-          '<article class="review">' +
-          '  <div class="review-head">' +
-          '    <span class="review-author">' + raw(c.autor) + '</span>' +
-          '    <span class="review-stars">' + estrellas + '</span>' +
-          '  </div>' +
-          '  <p class="review-text">' + raw(c.texto) + '</p>' +
-          '</article>';
-      }).join('');
+        return crear('article', { className: 'review' }, [
+          crear('div', { className: 'review-head' }, [
+            crear('span', { className: 'review-author', text: c.autor }),
+            crear('span', { className: 'review-stars', text: estrellas }),
+          ]),
+          crear('p', { className: 'review-text', text: c.texto }),
+        ]);
+      }));
     });
   }
 
@@ -285,7 +348,7 @@
     }).then(function (resp) {
       if (!resp.ok) {
         feedback.className = 'form-feedback is-error';
-        feedback.innerHTML = 'No se pudo publicar: ' + (resp.data.error || 'error desconocido');
+        feedback.textContent = 'No se pudo publicar: ' + (resp.data.error || 'error desconocido');
         return;
       }
       feedback.className = 'form-feedback is-ok';

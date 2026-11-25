@@ -3,15 +3,8 @@ import path from 'path';
 /**
  * Configuración de la aplicación.
  *
- * -----------------------------------------------------------------------------
- * FALLA 1 — Cifrado de datos y gestión de secretos (Ajustes de configuración)
- * -----------------------------------------------------------------------------
- * Las credenciales de la base de datos y el secreto de sesión están escritos
- * a mano en el código fuente. Cualquiera que clone el repositorio las conoce.
- *
- * Corrección: leer todo desde variables de entorno (ver .env.example) o desde
- * un gestor de secretos, y no versionar ningún secreto.
- * -----------------------------------------------------------------------------
+ * Se lee de variables de entorno (ver .env.example). No hay secretos en el
+ * código: se sacó el sessionSecret fijo, que no se usaba.
  */
 export default {
   port: Number(process.env.PORT || 3000),
@@ -26,10 +19,6 @@ export default {
     user: process.env.DB_USER || 'origen_app',
     password: process.env.DB_PASSWORD,
   },
-
-  // FALLA: secreto fijo y predecible, escrito en el código.
-  // Se necesita para firmar el token anti-CSRF (corrección del CSRF).
-  sessionSecret: 'origen-cafe-2024',
 
   uploadsDir: process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads'),
 };

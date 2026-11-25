@@ -14,9 +14,9 @@ const ERROR_CANTIDAD = `Cada producto necesita un id válido y una cantidad ente
  * Crea un pedido y devuelve su total calculado.
  * Mesa, cliente, items y cantidades se validan en el servidor (tipo, rango y longitud).
  *
- * FALLAS pendientes:
- *  - CSRF: no hay token anti-CSRF ni verificación de Origin/Referer.
- *  - No requiere autenticación ni rol.
+ * El token anti-CSRF lo verifica middleware/csrf.ts antes de llegar acá.
+ *
+ * FALLA pendiente: no requiere autenticación ni rol.
  */
 router.post('/', async (req, res, next) => {
   try {
